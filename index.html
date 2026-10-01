@@ -2,27 +2,23 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Block Blast Pro+</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Block Blast Click</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body { text-align:center; background:#f2f2f2; font-family:sans-serif; margin:0; }
-h2 { margin:10px 0 0 0; }
-#score { font-size:18px; margin:5px; }
-canvas { background:#fff; border:2px solid #333; touch-action:none; }
-#blocks { margin:10px; }
+body { text-align:center; background:#eee; font-family:sans-serif; }
+canvas { background:#fff; border:2px solid black; }
+#blocks { margin-top:10px; }
 .blockCanvas {
   display:inline-block;
   margin:8px;
   border:2px solid #888;
-  background:#fff;
-  cursor:pointer;
 }
 .selected { border:3px solid red; }
 </style>
 </head>
 <body>
 
-<h2>Block Blast Pro+</h2>
+<h2>Block Blast (Click Mode)</h2>
 <div id="score">Score: 0</div>
 <canvas id="game" width="300" height="300"></canvas>
 <div id="blocks"></div>
@@ -46,9 +42,8 @@ const shapes = [
 ];
 
 let currentBlocks = [];
-let selectedIndex = null;
-let dragging = false;
-let dragX = 0, dragY = 0;
+let selected = null;
+let followX = 0, followY = 0;
 
 function newBlocks(){
   currentBlocks = [];
@@ -67,7 +62,7 @@ function renderBlocks(){
     c.width = 60;
     c.height = 60;
     c.className="blockCanvas";
-    if(i===selectedIndex) c.classList.add("selected");
+    if(i===selected) c.classList.add("selected");
 
     const cctx = c.getContext("2d");
     shape.forEach((row,y)=>{
@@ -80,8 +75,10 @@ function renderBlocks(){
       });
     });
 
-    c.onmousedown = () => { selectedIndex = i; dragging = true; };
-    c.ontouchstart = () => { selectedIndex = i; dragging = true; };
+    c.onclick = ()=>{
+      selected = i;
+      renderBlocks();
+    };
 
     div.appendChild(c);
   });
@@ -100,15 +97,15 @@ function draw(){
     }
   }
 
-  // 드래그 미리보기
-  if(dragging && selectedIndex!==null){
-    const shape = currentBlocks[selectedIndex];
+  // 따라다니는 블록
+  if(selected!==null){
+    const shape = currentBlocks[selected];
     ctx.globalAlpha = 0.5;
     shape.forEach((row,y)=>{
       row.forEach((v,x)=>{
         if(v){
           ctx.fillStyle="green";
-          ctx.fillRect((dragX+x)*cell,(dragY+y)*cell,cell,cell);
+          ctx.fillRect((followX+x)*cell,(followY+y)*cell,cell,cell);
         }
       });
     });
@@ -118,60 +115,64 @@ function draw(){
 
 function getPos(e){
   const rect = canvas.getBoundingClientRect();
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-  return {
-    x: Math.floor((clientX - rect.left)/cell),
-    y: Math.floor((clientY - rect.top)/cell)
-  };
+  const x = Math.floor((e.clientX - rect.left)/cell);
+  const y = Math.floor((e.clientY - rect.top)/cell);
+  return {x,y};
 }
 
+// 마우스 이동 → 따라옴
 canvas.onmousemove = e=>{
-  if(!dragging) return;
+  if(selected===null) return;
   const p = getPos(e);
-  dragX = p.x;
-  dragY = p.y;
+  followX = p.x;
+  followY = p.y;
   draw();
 };
 
-canvas.ontouchmove = e=>{
-  if(!dragging) return;
+// 클릭 → 놓기
+canvas.onclick = e=>{
+  if(selected===null) return;
   const p = getPos(e);
-  dragX = p.x;
-  dragY = p.y;
-  draw();
-};
 
-canvas.onmouseup = e=>{
-  drop(e);
-};
-canvas.ontouchend = e=>{
-  drop(e);
-};
+  if(place(currentBlocks[selected],p.x,p.y)){
+    currentBlocks.splice(selected,1);
+    selected=null;
 
-function drop(e){
-  if(!dragging || selectedIndex===null) return;
-
-  const p = getPos(e);
-  const shape = currentBlocks[selectedIndex];
-
-  if(place(shape,p.x,p.y)){
-    animatePlace(shape,p.x,p.y);
-
-    currentBlocks.splice(selectedIndex,1);
-    selectedIndex=null;
-
-    if(currentBlocks.length===0){
-      newBlocks();
-    }
+    if(currentBlocks.length===0) newBlocks();
 
     clearLines();
     updateScore();
+    renderBlocks();
   }
 
-  dragging=false;
   draw();
-}
+};
+
+// 모바일 터치
+canvas.ontouchmove = e=>{
+  if(selected===null) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.touches[0].clientX - rect.left)/cell);
+  const y = Math.floor((e.touches[0].clientY - rect.top)/cell);
+  followX = x;
+  followY = y;
+  draw();
+};
+
+canvas.ontouchend = e=>{
+  if(selected===null) return;
+  if(place(currentBlocks[selected],followX,followY)){
+    currentBlocks.splice(selected,1);
+    selected=null;
+
+    if(currentBlocks.length===0) newBlocks();
+
+    clearLines();
+    updateScore();
+    renderBlocks();
+  }
+  draw();
+};
 
 function place(shape,px,py){
   for(let y=0;y<shape.length;y++){
@@ -191,36 +192,12 @@ function place(shape,px,py){
   return true;
 }
 
-// 애니메이션
-function animatePlace(shape,px,py){
-  let alpha = 0;
-  const interval = setInterval(()=>{
-    alpha += 0.1;
-    if(alpha>=1){
-      clearInterval(interval);
-      draw();
-      return;
-    }
-    draw();
-    ctx.globalAlpha = alpha;
-    shape.forEach((row,y)=>{
-      row.forEach((v,x)=>{
-        if(v){
-          ctx.fillStyle="blue";
-          ctx.fillRect((px+x)*cell,(py+y)*cell,cell,cell);
-        }
-      });
-    });
-    ctx.globalAlpha = 1;
-  },20);
-}
-
 function clearLines(){
   let cleared=0;
 
   for(let y=0;y<size;y++){
     if(grid[y].every(v=>v)){
-      for(let x=0;x<size;x++) grid[y][x]=0;
+      grid[y]=Array(size).fill(0);
       cleared++;
     }
   }

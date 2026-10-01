@@ -2,251 +2,233 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Block Blast Click</title>
+<title>Block Blast Final</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body { text-align:center; background:#eee; font-family:sans-serif; }
-canvas { background:#fff; border:2px solid black; }
+body { text-align:center; background:#f5f5f5; font-family:sans-serif; }
+canvas { background:#fff; border:3px solid #333; touch-action:none; }
 #blocks { margin-top:10px; }
-.blockCanvas {
-  display:inline-block;
-  margin:8px;
-  border:2px solid #888;
-}
-.selected { border:3px solid red; }
+.block { display:inline-block; margin:6px; cursor:pointer; }
+#score { font-size:20px; margin:10px; }
 </style>
 </head>
 <body>
 
-<h2>Block Blast (Click Mode)</h2>
+<h2>Block Blast</h2>
 <div id="score">Score: 0</div>
-<canvas id="game" width="300" height="300"></canvas>
+<canvas id="game" width="320" height="320"></canvas>
 <div id="blocks"></div>
 
 <script>
+const SIZE = 8;
+const CELL = 40;
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-const size = 10;
-const cell = 30;
-
-let grid = Array.from({length:size},()=>Array(size).fill(0));
+let board = Array.from({length:SIZE},()=>Array(SIZE).fill(0));
 let score = 0;
 
+const colors = ["#4dabf7","#69db7c","#ffd43b","#ff8787","#b197fc"];
+
 const shapes = [
-  [[1]], [[1,1]], [[1,1,1]],
-  [[1],[1],[1]],
-  [[1,1],[1,1]],
-  [[1,0],[1,1]],
-  [[0,1],[1,1]]
+[[1]],
+[[1,1]],
+[[1,1,1]],
+[[1,1,1,1]],
+[[1,1],[1,1]],
+[[1,0],[1,1]],
+[[0,1],[1,1]],
+[[1,1,1],[0,1,0]],
+[[1,1,1,1,1]],
+[[1,0],[1,0],[1,1]]
 ];
 
-let currentBlocks = [];
+let current = [];
 let selected = null;
-let followX = 0, followY = 0;
+let drag = false;
+let dx=0, dy=0;
 
-function newBlocks(){
-  currentBlocks = [];
+function newSet(){
+  current=[];
   for(let i=0;i<3;i++){
-    currentBlocks.push(shapes[Math.floor(Math.random()*shapes.length)]);
+    current.push({
+      shape: shapes[Math.floor(Math.random()*shapes.length)],
+      color: colors[Math.floor(Math.random()*colors.length)]
+    });
   }
   renderBlocks();
 }
 
 function renderBlocks(){
   const div = document.getElementById("blocks");
-  div.innerHTML = "";
-
-  currentBlocks.forEach((shape,i)=>{
+  div.innerHTML="";
+  current.forEach((b,i)=>{
     const c = document.createElement("canvas");
-    c.width = 60;
-    c.height = 60;
-    c.className="blockCanvas";
-    if(i===selected) c.classList.add("selected");
+    c.width=80; c.height=80;
+    c.className="block";
+    const cctx=c.getContext("2d");
 
-    const cctx = c.getContext("2d");
-    shape.forEach((row,y)=>{
+    b.shape.forEach((row,y)=>{
       row.forEach((v,x)=>{
         if(v){
-          cctx.fillStyle="blue";
+          cctx.fillStyle=b.color;
           cctx.fillRect(x*20,y*20,20,20);
         }
         cctx.strokeRect(x*20,y*20,20,20);
       });
     });
 
-    c.onclick = ()=>{
-      selected = i;
-      renderBlocks();
-    };
+    c.onmousedown=()=>{selected=i; drag=true;}
+    c.ontouchstart=()=>{selected=i; drag=true;}
 
     div.appendChild(c);
   });
 }
 
 function draw(){
-  ctx.clearRect(0,0,300,300);
+  ctx.clearRect(0,0,320,320);
 
-  for(let y=0;y<size;y++){
-    for(let x=0;x<size;x++){
-      if(grid[y][x]){
-        ctx.fillStyle="blue";
-        ctx.fillRect(x*cell,y*cell,cell,cell);
+  for(let y=0;y<SIZE;y++){
+    for(let x=0;x<SIZE;x++){
+      if(board[y][x]){
+        ctx.fillStyle=board[y][x];
+        ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
       }
-      ctx.strokeRect(x*cell,y*cell,cell,cell);
+      ctx.strokeRect(x*CELL,y*CELL,CELL,CELL);
     }
   }
 
-  // 따라다니는 블록
-  if(selected!==null){
-    const shape = currentBlocks[selected];
-    ctx.globalAlpha = 0.5;
-    shape.forEach((row,y)=>{
+  if(drag && selected!==null){
+    const b=current[selected];
+    ctx.globalAlpha=0.5;
+    b.shape.forEach((row,y)=>{
       row.forEach((v,x)=>{
         if(v){
-          ctx.fillStyle="green";
-          ctx.fillRect((followX+x)*cell,(followY+y)*cell,cell,cell);
+          ctx.fillStyle=b.color;
+          ctx.fillRect((dx+x)*CELL,(dy+y)*CELL,CELL,CELL);
         }
       });
     });
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha=1;
   }
 }
 
-function getPos(e){
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((e.clientX - rect.left)/cell);
-  const y = Math.floor((e.clientY - rect.top)/cell);
-  return {x,y};
+function pos(e){
+  const r=canvas.getBoundingClientRect();
+  const cx=e.touches?e.touches[0].clientX:e.clientX;
+  const cy=e.touches?e.touches[0].clientY:e.clientY;
+  return {
+    x:Math.floor((cx-r.left)/CELL),
+    y:Math.floor((cy-r.top)/CELL)
+  };
 }
 
-// 마우스 이동 → 따라옴
-canvas.onmousemove = e=>{
-  if(selected===null) return;
-  const p = getPos(e);
-  followX = p.x;
-  followY = p.y;
+canvas.onmousemove=e=>{
+  if(!drag) return;
+  const p=pos(e);
+  dx=p.x; dy=p.y;
   draw();
 };
 
-// 클릭 → 놓기
-canvas.onclick = e=>{
-  if(selected===null) return;
-  const p = getPos(e);
+canvas.ontouchmove=e=>{
+  if(!drag) return;
+  const p=pos(e);
+  dx=p.x; dy=p.y;
+  draw();
+};
 
-  if(place(currentBlocks[selected],p.x,p.y)){
-    currentBlocks.splice(selected,1);
+canvas.onmouseup=e=>drop(e);
+canvas.ontouchend=e=>drop(e);
+
+function drop(e){
+  if(!drag||selected===null) return;
+  const b=current[selected];
+
+  if(canPlace(b.shape,dx,dy)){
+    place(b);
+    current.splice(selected,1);
     selected=null;
 
-    if(currentBlocks.length===0) newBlocks();
-
     clearLines();
-    updateScore();
-    renderBlocks();
-  }
+    addScore(10);
 
-  draw();
-};
+    if(current.length===0) newSet();
 
-// 모바일 터치
-canvas.ontouchmove = e=>{
-  if(selected===null) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((e.touches[0].clientX - rect.left)/cell);
-  const y = Math.floor((e.touches[0].clientY - rect.top)/cell);
-  followX = x;
-  followY = y;
-  draw();
-};
-
-canvas.ontouchend = e=>{
-  if(selected===null) return;
-  if(place(currentBlocks[selected],followX,followY)){
-    currentBlocks.splice(selected,1);
-    selected=null;
-
-    if(currentBlocks.length===0) newBlocks();
-
-    clearLines();
-    updateScore();
-    renderBlocks();
-  }
-  draw();
-};
-
-function place(shape,px,py){
-  for(let y=0;y<shape.length;y++){
-    for(let x=0;x<shape[y].length;x++){
-      if(shape[y][x]){
-        if(px+x>=size || py+y>=size || grid[py+y][px+x]) return false;
-      }
+    if(!anyMove()){
+      setTimeout(()=>alert("GAME OVER"),200);
     }
   }
+
+  drag=false;
+  draw();
+  renderBlocks();
+}
+
+function canPlace(shape,px,py){
   for(let y=0;y<shape.length;y++){
     for(let x=0;x<shape[y].length;x++){
       if(shape[y][x]){
-        grid[py+y][px+x]=1;
+        if(px+x>=SIZE||py+y>=SIZE||board[py+y][px+x]) return false;
       }
     }
   }
   return true;
 }
 
-function clearLines(){
-  let cleared=0;
+function place(b){
+  b.shape.forEach((row,y)=>{
+    row.forEach((v,x)=>{
+      if(v){
+        board[dy+y][dx+x]=b.color;
+      }
+    });
+  });
+}
 
-  for(let y=0;y<size;y++){
-    if(grid[y].every(v=>v)){
-      grid[y]=Array(size).fill(0);
-      cleared++;
+function clearLines(){
+  let lines=0;
+
+  for(let y=0;y<SIZE;y++){
+    if(board[y].every(v=>v)){
+      board[y]=Array(SIZE).fill(0);
+      lines++;
     }
   }
 
-  for(let x=0;x<size;x++){
+  for(let x=0;x<SIZE;x++){
     let full=true;
-    for(let y=0;y<size;y++){
-      if(!grid[y][x]) full=false;
+    for(let y=0;y<SIZE;y++){
+      if(!board[y][x]) full=false;
     }
     if(full){
-      for(let y=0;y<size;y++) grid[y][x]=0;
-      cleared++;
+      for(let y=0;y<SIZE;y++) board[y][x]=0;
+      lines++;
     }
   }
 
-  score += cleared*10;
-
-  if(!canPlaceAny()){
-    setTimeout(()=>alert("게임오버!"),200);
+  if(lines>0){
+    addScore(lines*20 + (lines>1?lines*10:0)); // 콤보
   }
 }
 
-function updateScore(){
+function addScore(v){
+  score+=v;
   document.getElementById("score").innerText="Score: "+score;
 }
 
-function canPlaceAny(){
-  for(let b of currentBlocks){
-    for(let y=0;y<size;y++){
-      for(let x=0;x<size;x++){
-        if(placeable(b,x,y)) return true;
+function anyMove(){
+  for(let b of current){
+    for(let y=0;y<SIZE;y++){
+      for(let x=0;x<SIZE;x++){
+        if(canPlace(b.shape,x,y)) return true;
       }
     }
   }
   return false;
 }
 
-function placeable(shape,px,py){
-  for(let y=0;y<shape.length;y++){
-    for(let x=0;x<shape[y].length;x++){
-      if(shape[y][x]){
-        if(px+x>=size || py+y>=size || grid[py+y][px+x]) return false;
-      }
-    }
-  }
-  return true;
-}
-
-newBlocks();
+newSet();
 draw();
 </script>
 

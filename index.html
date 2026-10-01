@@ -2,18 +2,27 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Block Blast Pro</title>
+<title>Block Blast Pro+</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-body { text-align:center; background:#eee; font-family:sans-serif; }
-canvas { background:white; border:2px solid black; margin-top:10px;}
-#blocks { margin-top:10px; }
-.block { display:inline-block; margin:5px; cursor:pointer; }
-#score { font-size:20px; }
+body { text-align:center; background:#f2f2f2; font-family:sans-serif; margin:0; }
+h2 { margin:10px 0 0 0; }
+#score { font-size:18px; margin:5px; }
+canvas { background:#fff; border:2px solid #333; touch-action:none; }
+#blocks { margin:10px; }
+.blockCanvas {
+  display:inline-block;
+  margin:8px;
+  border:2px solid #888;
+  background:#fff;
+  cursor:pointer;
+}
+.selected { border:3px solid red; }
 </style>
 </head>
 <body>
 
-<h2>Block Blast Pro</h2>
+<h2>Block Blast Pro+</h2>
 <div id="score">Score: 0</div>
 <canvas id="game" width="300" height="300"></canvas>
 <div id="blocks"></div>
@@ -29,9 +38,7 @@ let grid = Array.from({length:size},()=>Array(size).fill(0));
 let score = 0;
 
 const shapes = [
-  [[1]],
-  [[1,1]],
-  [[1,1,1]],
+  [[1]], [[1,1]], [[1,1,1]],
   [[1],[1],[1]],
   [[1,1],[1,1]],
   [[1,0],[1,1]],
@@ -39,7 +46,9 @@ const shapes = [
 ];
 
 let currentBlocks = [];
-let selected = null;
+let selectedIndex = null;
+let dragging = false;
+let dragX = 0, dragY = 0;
 
 function newBlocks(){
   currentBlocks = [];
@@ -52,21 +61,35 @@ function newBlocks(){
 function renderBlocks(){
   const div = document.getElementById("blocks");
   div.innerHTML = "";
-  currentBlocks.forEach((b,i)=>{
-    const el = document.createElement("div");
-    el.className="block";
-    el.innerText = shapeToText(b);
-    el.onclick=()=>selected=i;
-    div.appendChild(el);
-  });
-}
 
-function shapeToText(shape){
-  return shape.map(r=>r.map(v=>v?"■":" ").join("")).join("\n");
+  currentBlocks.forEach((shape,i)=>{
+    const c = document.createElement("canvas");
+    c.width = 60;
+    c.height = 60;
+    c.className="blockCanvas";
+    if(i===selectedIndex) c.classList.add("selected");
+
+    const cctx = c.getContext("2d");
+    shape.forEach((row,y)=>{
+      row.forEach((v,x)=>{
+        if(v){
+          cctx.fillStyle="blue";
+          cctx.fillRect(x*20,y*20,20,20);
+        }
+        cctx.strokeRect(x*20,y*20,20,20);
+      });
+    });
+
+    c.onmousedown = () => { selectedIndex = i; dragging = true; };
+    c.ontouchstart = () => { selectedIndex = i; dragging = true; };
+
+    div.appendChild(c);
+  });
 }
 
 function draw(){
   ctx.clearRect(0,0,300,300);
+
   for(let y=0;y<size;y++){
     for(let x=0;x<size;x++){
       if(grid[y][x]){
@@ -76,35 +99,79 @@ function draw(){
       ctx.strokeRect(x*cell,y*cell,cell,cell);
     }
   }
+
+  // 드래그 미리보기
+  if(dragging && selectedIndex!==null){
+    const shape = currentBlocks[selectedIndex];
+    ctx.globalAlpha = 0.5;
+    shape.forEach((row,y)=>{
+      row.forEach((v,x)=>{
+        if(v){
+          ctx.fillStyle="green";
+          ctx.fillRect((dragX+x)*cell,(dragY+y)*cell,cell,cell);
+        }
+      });
+    });
+    ctx.globalAlpha = 1;
+  }
 }
 
-canvas.onclick = e=>{
-  if(selected===null) return;
-
+function getPos(e){
   const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((e.clientX-rect.left)/cell);
-  const y = Math.floor((e.clientY-rect.top)/cell);
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return {
+    x: Math.floor((clientX - rect.left)/cell),
+    y: Math.floor((clientY - rect.top)/cell)
+  };
+}
 
-  const shape = currentBlocks[selected];
+canvas.onmousemove = e=>{
+  if(!dragging) return;
+  const p = getPos(e);
+  dragX = p.x;
+  dragY = p.y;
+  draw();
+};
 
-  if(place(shape,x,y)){
-    currentBlocks.splice(selected,1);
-    selected=null;
+canvas.ontouchmove = e=>{
+  if(!dragging) return;
+  const p = getPos(e);
+  dragX = p.x;
+  dragY = p.y;
+  draw();
+};
+
+canvas.onmouseup = e=>{
+  drop(e);
+};
+canvas.ontouchend = e=>{
+  drop(e);
+};
+
+function drop(e){
+  if(!dragging || selectedIndex===null) return;
+
+  const p = getPos(e);
+  const shape = currentBlocks[selectedIndex];
+
+  if(place(shape,p.x,p.y)){
+    animatePlace(shape,p.x,p.y);
+
+    currentBlocks.splice(selectedIndex,1);
+    selectedIndex=null;
 
     if(currentBlocks.length===0){
       newBlocks();
     }
 
     clearLines();
-    draw();
     updateScore();
-
-    if(!canPlaceAny()){
-      alert("게임오버!");
-      location.reload();
-    }
   }
-};
+
+  dragging=false;
+  draw();
+}
 
 function place(shape,px,py){
   for(let y=0;y<shape.length;y++){
@@ -124,12 +191,36 @@ function place(shape,px,py){
   return true;
 }
 
+// 애니메이션
+function animatePlace(shape,px,py){
+  let alpha = 0;
+  const interval = setInterval(()=>{
+    alpha += 0.1;
+    if(alpha>=1){
+      clearInterval(interval);
+      draw();
+      return;
+    }
+    draw();
+    ctx.globalAlpha = alpha;
+    shape.forEach((row,y)=>{
+      row.forEach((v,x)=>{
+        if(v){
+          ctx.fillStyle="blue";
+          ctx.fillRect((px+x)*cell,(py+y)*cell,cell,cell);
+        }
+      });
+    });
+    ctx.globalAlpha = 1;
+  },20);
+}
+
 function clearLines(){
   let cleared=0;
 
   for(let y=0;y<size;y++){
     if(grid[y].every(v=>v)){
-      grid[y]=Array(size).fill(0);
+      for(let x=0;x<size;x++) grid[y][x]=0;
       cleared++;
     }
   }
@@ -145,7 +236,11 @@ function clearLines(){
     }
   }
 
-  score += cleared * 10;
+  score += cleared*10;
+
+  if(!canPlaceAny()){
+    setTimeout(()=>alert("게임오버!"),200);
+  }
 }
 
 function updateScore(){

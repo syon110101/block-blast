@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Block Blast Final</title>
+<title>Block Blast Final+</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 body { text-align:center; background:#f5f5f5; font-family:sans-serif; }
@@ -31,7 +31,8 @@ let score = 0;
 
 const colors = ["#4dabf7","#69db7c","#ffd43b","#ff8787","#b197fc"];
 
-const shapes = [
+// 🔥 모든 블록 종류
+const baseShapes = [
 [[1]],
 [[1,1]],
 [[1,1,1]],
@@ -44,16 +45,36 @@ const shapes = [
 [[1,0],[1,0],[1,1]]
 ];
 
-let current = [];
-let selected = null;
-let drag = false;
+// 회전 생성
+function rotate(shape){
+  return shape[0].map((_,i)=>shape.map(r=>r[i]).reverse());
+}
+
+function getAllRotations(shape){
+  let arr=[shape];
+  let cur=shape;
+  for(let i=0;i<3;i++){
+    cur=rotate(cur);
+    arr.push(cur);
+  }
+  return arr;
+}
+
+let allShapes=[];
+baseShapes.forEach(s=>{
+  allShapes.push(...getAllRotations(s));
+});
+
+let current=[];
+let selected=null;
+let drag=false;
 let dx=0, dy=0;
 
 function newSet(){
   current=[];
   for(let i=0;i<3;i++){
     current.push({
-      shape: shapes[Math.floor(Math.random()*shapes.length)],
+      shape: allShapes[Math.floor(Math.random()*allShapes.length)],
       color: colors[Math.floor(Math.random()*colors.length)]
     });
   }
@@ -61,29 +82,40 @@ function newSet(){
 }
 
 function renderBlocks(){
-  const div = document.getElementById("blocks");
+  const div=document.getElementById("blocks");
   div.innerHTML="";
   current.forEach((b,i)=>{
-    const c = document.createElement("canvas");
-    c.width=80; c.height=80;
+    const c=document.createElement("canvas");
+    c.width=80;c.height=80;
     c.className="block";
-    const cctx=c.getContext("2d");
+    const ct=c.getContext("2d");
 
-    b.shape.forEach((row,y)=>{
-      row.forEach((v,x)=>{
+    b.shape.forEach((r,y)=>{
+      r.forEach((v,x)=>{
         if(v){
-          cctx.fillStyle=b.color;
-          cctx.fillRect(x*20,y*20,20,20);
+          ct.fillStyle=b.color;
+          ct.fillRect(x*20,y*20,20,20);
         }
-        cctx.strokeRect(x*20,y*20,20,20);
+        ct.strokeRect(x*20,y*20,20,20);
       });
     });
 
-    c.onmousedown=()=>{selected=i; drag=true;}
-    c.ontouchstart=()=>{selected=i; drag=true;}
+    c.onmousedown=()=>{selected=i;drag=true;}
+    c.ontouchstart=()=>{selected=i;drag=true;}
 
     div.appendChild(c);
   });
+}
+
+function canPlace(shape,px,py){
+  for(let y=0;y<shape.length;y++){
+    for(let x=0;x<shape[y].length;x++){
+      if(shape[y][x]){
+        if(px+x>=SIZE||py+y>=SIZE||board[py+y][px+x]) return false;
+      }
+    }
+  }
+  return true;
 }
 
 function draw(){
@@ -99,13 +131,16 @@ function draw(){
     }
   }
 
+  // 🔥 하이라이트
   if(drag && selected!==null){
     const b=current[selected];
+    const valid=canPlace(b.shape,dx,dy);
+
     ctx.globalAlpha=0.5;
-    b.shape.forEach((row,y)=>{
-      row.forEach((v,x)=>{
+    b.shape.forEach((r,y)=>{
+      r.forEach((v,x)=>{
         if(v){
-          ctx.fillStyle=b.color;
+          ctx.fillStyle=valid?"lime":"red";
           ctx.fillRect((dx+x)*CELL,(dy+y)*CELL,CELL,CELL);
         }
       });
@@ -125,24 +160,24 @@ function pos(e){
 }
 
 canvas.onmousemove=e=>{
-  if(!drag) return;
+  if(!drag)return;
   const p=pos(e);
-  dx=p.x; dy=p.y;
+  dx=p.x;dy=p.y;
   draw();
 };
 
 canvas.ontouchmove=e=>{
-  if(!drag) return;
+  if(!drag)return;
   const p=pos(e);
-  dx=p.x; dy=p.y;
+  dx=p.x;dy=p.y;
   draw();
 };
 
-canvas.onmouseup=e=>drop(e);
-canvas.ontouchend=e=>drop(e);
+canvas.onmouseup=e=>drop();
+canvas.ontouchend=e=>drop();
 
-function drop(e){
-  if(!drag||selected===null) return;
+function drop(){
+  if(!drag||selected===null)return;
   const b=current[selected];
 
   if(canPlace(b.shape,dx,dy)){
@@ -150,13 +185,12 @@ function drop(e){
     current.splice(selected,1);
     selected=null;
 
-    clearLines();
-    addScore(10);
+    animateClear();
 
-    if(current.length===0) newSet();
+    if(current.length===0)newSet();
 
     if(!anyMove()){
-      setTimeout(()=>alert("GAME OVER"),200);
+      setTimeout(()=>alert("GAME OVER"),300);
     }
   }
 
@@ -165,51 +199,64 @@ function drop(e){
   renderBlocks();
 }
 
-function canPlace(shape,px,py){
-  for(let y=0;y<shape.length;y++){
-    for(let x=0;x<shape[y].length;x++){
-      if(shape[y][x]){
-        if(px+x>=SIZE||py+y>=SIZE||board[py+y][px+x]) return false;
-      }
-    }
-  }
-  return true;
-}
-
 function place(b){
-  b.shape.forEach((row,y)=>{
-    row.forEach((v,x)=>{
-      if(v){
-        board[dy+y][dx+x]=b.color;
-      }
+  b.shape.forEach((r,y)=>{
+    r.forEach((v,x)=>{
+      if(v) board[dy+y][dx+x]=b.color;
     });
   });
 }
 
-function clearLines(){
-  let lines=0;
-
+// 🔥 줄 삭제 애니메이션
+function animateClear(){
+  let lines=[];
   for(let y=0;y<SIZE;y++){
-    if(board[y].every(v=>v)){
-      board[y]=Array(SIZE).fill(0);
-      lines++;
-    }
+    if(board[y].every(v=>v)) lines.push({type:"row",i:y});
   }
-
   for(let x=0;x<SIZE;x++){
     let full=true;
-    for(let y=0;y<SIZE;y++){
-      if(!board[y][x]) full=false;
-    }
-    if(full){
-      for(let y=0;y<SIZE;y++) board[y][x]=0;
-      lines++;
-    }
+    for(let y=0;y<SIZE;y++) if(!board[y][x]) full=false;
+    if(full) lines.push({type:"col",i:x});
   }
 
-  if(lines>0){
-    addScore(lines*20 + (lines>1?lines*10:0)); // 콤보
+  if(lines.length===0){
+    addScore(10);
+    return;
   }
+
+  let step=0;
+  const anim=setInterval(()=>{
+    draw();
+
+    ctx.fillStyle="white";
+    ctx.globalAlpha=step/10;
+
+    lines.forEach(l=>{
+      if(l.type==="row"){
+        ctx.fillRect(0,l.i*CELL,320,CELL);
+      }else{
+        ctx.fillRect(l.i*CELL,0,CELL,320);
+      }
+    });
+
+    ctx.globalAlpha=1;
+    step++;
+
+    if(step>10){
+      clearInterval(anim);
+
+      lines.forEach(l=>{
+        if(l.type==="row"){
+          board[l.i]=Array(SIZE).fill(0);
+        }else{
+          for(let y=0;y<SIZE;y++) board[y][l.i]=0;
+        }
+      });
+
+      addScore(lines.length*20 + (lines.length>1?lines.length*10:0));
+      draw();
+    }
+  },30);
 }
 
 function addScore(v){

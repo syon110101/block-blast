@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Block Blast</title>
+<style>
+body{ text-align:center; font-family:sans-serif; background:#eee;}
+canvas{ background:white; border:2px solid black; }
+#score{ font-size:20px; }
+</style>
+</head>
+<body>
+
+<h2>Block Blast</h2>
+<div id="score">Score: 0</div>
+<canvas id="game" width="300" height="300"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const size = 10;
+const cell = 30;
+
+let score = 0;
+let grid = Array.from({length:size},()=>Array(size).fill(0));
+
+const blocks = [
+  [[1]],
+  [[1,1]],
+  [[1,1],[1,1]],
+  [[1,0],[1,1]],
+  [[1,1,1]]
+];
+
+let current = randomBlock();
+
+function randomBlock(){
+  return blocks[Math.floor(Math.random()*blocks.length)];
+}
+
+function draw(){
+  ctx.clearRect(0,0,300,300);
+
+  for(let y=0;y<size;y++){
+    for(let x=0;x<size;x++){
+      if(grid[y][x]){
+        ctx.fillStyle="blue";
+        ctx.fillRect(x*cell,y*cell,cell,cell);
+      }
+      ctx.strokeRect(x*cell,y*cell,cell,cell);
+    }
+  }
+}
+
+canvas.addEventListener("click", e=>{
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX-rect.left)/cell);
+  const y = Math.floor((e.clientY-rect.top)/cell);
+
+  if(place(x,y)){
+    clearLines();
+    current = randomBlock();
+    draw();
+  }
+});
+
+function place(px,py){
+  for(let y=0;y<current.length;y++){
+    for(let x=0;x<current[y].length;x++){
+      if(current[y][x]){
+        if(px+x>=size || py+y>=size || grid[py+y][px+x]) return false;
+      }
+    }
+  }
+
+  for(let y=0;y<current.length;y++){
+    for(let x=0;x<current[y].length;x++){
+      if(current[y][x]){
+        grid[py+y][px+x]=1;
+      }
+    }
+  }
+  return true;
+}
+
+function clearLines(){
+  let cleared = 0;
+
+  for(let y=0;y<size;y++){
+    if(grid[y].every(v=>v===1)){
+      grid[y]=Array(size).fill(0);
+      cleared++;
+    }
+  }
+
+  for(let x=0;x<size;x++){
+    let full=true;
+    for(let y=0;y<size;y++){
+      if(!grid[y][x]) full=false;
+    }
+    if(full){
+      for(let y=0;y<size;y++) grid[y][x]=0;
+      cleared++;
+    }
+  }
+
+  score += cleared * 10;
+  document.getElementById("score").innerText = "Score: " + score;
+}
+
+draw();
+</script>
+
+</body>
+</html>
